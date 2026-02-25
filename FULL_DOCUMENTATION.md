@@ -61,7 +61,7 @@ docker run -d ^
   jenkins-dind
 ```
 
-> ✅ If successful, you’ll get a long alphanumeric container ID
+> ✅ If successful, you'll get a long alphanumeric container ID
 
 ### 4. Check Jenkins Logs and Get Initial Password
 
@@ -70,7 +70,7 @@ docker ps
 docker logs jenkins-dind
 ```
 
-If the password isn’t visible, run:
+If the password isn't visible, run:
 
 ```bash
 docker exec jenkins-dind cat /var/jenkins_home/secrets/initialAdminPassword
@@ -115,7 +115,7 @@ docker restart jenkins-dind
     - `repo` (for full control of private repositories)
     - `admin:repo_hook` (for webhook integration)
 
-- Generate the token and **save it securely** (you won’t see it again!).
+- Generate the token and **save it securely** (you won't see it again!).
 
 > ℹ️ **What is this token?**
 > A GitHub token is a secure way to authenticate Jenkins (or any CI/CD tool) to access your GitHub repositories without needing your GitHub password. It's safer and recommended over using plain credentials.
@@ -164,7 +164,6 @@ Click **Save**.
 - Open your project in **VS Code**
 - Create a file named `Jenkinsfile` in the root directory
 
-
 ### 6. Push the Jenkinsfile to GitHub
 
 ```bash
@@ -179,15 +178,15 @@ git push origin main
 
 - Go to **Jenkins Dashboard** → Select your pipeline → Click **Build Now**
 
-🎉 **You’ll see a SUCCESS message if everything works!**
+🎉 **You'll see a SUCCESS message if everything works!**
 
-✅ **Your GitHub repository has been cloned inside Jenkins’ workspace!**
+✅ **Your GitHub repository has been cloned inside Jenkins' workspace!**
 
 ---
 
 > 🔁 If you already cloned the repo with a `Jenkinsfile` in it, you can skip creating a new one manually.
 
-## ==> 3. 🐳 Build Docker Image, Scan with Trivy, and Push to AWS ECR
+## ==> 3. 🐳 Build Docker Image, Scan with Trivy, and Push to Registry
 
 ### 1. Install Trivy in Jenkins Container
 
@@ -208,7 +207,9 @@ docker restart jenkins-dind
 
 ---
 
-### 2. Install AWS Plugins in Jenkins
+### 2. Install Cloud Plugins in Jenkins
+
+#### 🅰️ AWS — Install AWS Plugins
 
 - Go to **Jenkins Dashboard** → **Manage Jenkins** → **Plugins**
 - Install:
@@ -220,18 +221,48 @@ docker restart jenkins-dind
 docker restart jenkins-dind
 ```
 
+#### ☁️ GCP — Install GCP Plugins
+
+- Go to **Jenkins Dashboard** → **Manage Jenkins** → **Plugins**
+- Install:
+  - **Google OAuth Credentials**
+  - **Google Artifact Registry Auth** (if available, otherwise not required)
+- Restart the Jenkins container:
+
+```bash
+docker restart jenkins-dind
+```
+
 ---
 
-### 3. Create IAM User in AWS
+### 3. Create Cloud Credentials
+
+#### 🅰️ AWS — Create IAM User
 
 - Go to **AWS Console** → **IAM** → **Users** → **Add User**
 - Assign **programmatic access**
 - Attach policy: `AmazonEC2ContainerRegistryFullAccess`
 - After creation, generate **Access Key + Secret**
 
+#### ☁️ GCP — Create Service Account
+
+- Go to **GCP Console** → **IAM & Admin** → **Service Accounts** → **Create Service Account**
+- Name it (e.g., `jenkins-deployer`)
+- Assign roles:
+  - `Artifact Registry Writer` (to push images)
+  - `Cloud Run Admin` (to deploy)
+  - `Service Account User` (required for Cloud Run deployments)
+- Click **Done** → Click on the created service account → **Keys** tab → **Add Key** → **Create new key** → **JSON**
+- Download the JSON key file and **save it securely**
+
+> ℹ️ **What is this JSON key?**
+> A GCP service account key is the equivalent of AWS Access Key + Secret. It authenticates Jenkins to interact with GCP services like Artifact Registry and Cloud Run.
+
 ---
 
-### 4. Add AWS Credentials to Jenkins
+### 4. Add Cloud Credentials to Jenkins
+
+#### 🅰️ AWS — Add AWS Credentials
 
 - Go to **Jenkins Dashboard** → **Manage Jenkins** → **Credentials**
 - Click on **(Global)** → **Add Credentials**
@@ -241,9 +272,19 @@ docker restart jenkins-dind
   - **Secret Access Key**
 - Give an ID (e.g., `aws-ecr-creds`) and Save
 
+#### ☁️ GCP — Add GCP Credentials
+
+- Go to **Jenkins Dashboard** → **Manage Jenkins** → **Credentials**
+- Click on **(Global)** → **Add Credentials**
+- Select **Secret file**
+- Upload the **JSON key file** you downloaded from GCP
+- Give an ID (e.g., `gcp-service-account`) and Save
+
 ---
 
-### 5. Install AWS CLI Inside Jenkins Container
+### 5. Install Cloud CLI Inside Jenkins Container
+
+#### 🅰️ AWS — Install AWS CLI
 
 ```bash
 docker exec -u root -it jenkins-dind bash
@@ -256,18 +297,71 @@ aws --version
 exit
 ```
 
+#### ☁️ GCP — Install Google Cloud CLI (`gcloud`)
+
+```bash
+docker exec -u root -it jenkins-dind bash
+apt update
+apt install -y curl apt-transport-https ca-certificates gnupg
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee /etc/apt/sources.list.d/google-cloud-sdk.list
+apt update
+apt install -y google-cloud-cli
+gcloud --version
+exit
+```
+
 ---
 
-### 6. Create an ECR Repository
+### 6. Create a Container Registry Repository
 
-- Go to AWS Console → ECR → Create Repository
-- Note the **repository URI**
+#### 🅰️ AWS — Create ECR Repository
+
+- Go to **AWS Console** → **ECR** → **Create Repository**
+- Note the **repository URI** (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/medical-rag`)
+
+#### ☁️ GCP — Create Artifact Registry Repository
+
+- Go to **GCP Console** → **Artifact Registry** → **Create Repository**
+- Fill in:
+  - **Name:** `medical-rag` (or your preferred name)
+  - **Format:** Docker
+  - **Region:** Choose your region (e.g., `us-central1`)
+- Click **Create**
+- Note the **repository path** (e.g., `us-central1-docker.pkg.dev/YOUR_PROJECT_ID/medical-rag`)
+
+> ℹ️ **GCP Artifact Registry** is the GCP equivalent of AWS ECR. It stores your Docker images and integrates directly with Cloud Run for deployment.
 
 ---
 
-### 7. Add Build, Scan, and Push Stage in Jenkinsfile (  Already done if cloned )
+### 7. Add Build, Scan, and Push Stage in Jenkinsfile ( Already done if cloned )
 
+#### ☁️ GCP — Key Differences in Jenkinsfile
 
+If using GCP instead of AWS, update these parts in your `Jenkinsfile`:
+
+**Authentication (replace AWS ECR login):**
+
+```groovy
+// AWS ECR login:
+// sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <AWS_ECR_URI>"
+
+// GCP Artifact Registry login:
+sh "gcloud auth activate-service-account --key-file=${GCP_KEY}"
+sh "gcloud auth configure-docker us-central1-docker.pkg.dev --quiet"
+```
+
+**Push image (replace ECR URI with Artifact Registry URI):**
+
+```groovy
+// AWS:
+// sh "docker tag medical-rag:latest <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/medical-rag:latest"
+// sh "docker push <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/medical-rag:latest"
+
+// GCP:
+sh "docker tag medical-rag:latest us-central1-docker.pkg.dev/YOUR_PROJECT_ID/medical-rag/medical-rag:latest"
+sh "docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/medical-rag/medical-rag:latest"
+```
 
 > 🔐 **Tip**: Change `--exit-code 0` to `--exit-code 1` in Trivy to make the pipeline fail on vulnerabilities.
 
@@ -291,20 +385,22 @@ docker restart jenkins-dind
 
 Then open **Jenkins Dashboard** again to continue.
 
-## ==> 4. 🚀 Deployment to AWS App Runner
+## ==> 4. 🚀 Deployment to Cloud Service
 
 ### ✅ Prerequisites
 
 1. **Jenkinsfile Deployment Stage** ( Already done if cloned )
 
-### 🔐 IAM User Permissions
+---
+
+### 🅰️ AWS — Deployment to AWS App Runner
+
+#### 🔐 IAM User Permissions
 
 - Go to **AWS Console** → **IAM** → Select your Jenkins user
 - Attach the policy: `AWSAppRunnerFullAccess`
 
----
-
-### 🌐 Setup AWS App Runner (Manual Step)
+#### 🌐 Setup AWS App Runner (Manual Step)
 
 1. Go to **AWS Console** → **App Runner**
 2. Click **Create service**
@@ -319,13 +415,82 @@ Then open **Jenkins Dashboard** again to continue.
 
 ---
 
+### ☁️ GCP — Deployment to Google Cloud Run
+
+#### 🔐 Service Account Permissions
+
+- Go to **GCP Console** → **IAM & Admin** → **IAM**
+- Find your `jenkins-deployer` service account
+- Ensure it has these roles (should already be set from Step 3):
+  - `Cloud Run Admin`
+  - `Service Account User`
+  - `Artifact Registry Reader`
+
+#### 🌐 Setup Cloud Run (Manual — First Time)
+
+1. Go to **GCP Console** → **Cloud Run**
+2. Click **Create Service**
+3. Choose:
+   - **Source**: Select the container image from **Artifact Registry**
+   - Image URL: `us-central1-docker.pkg.dev/YOUR_PROJECT_ID/medical-rag/medical-rag:latest`
+4. Configure:
+   - **Service name:** `medical-rag-chatbot`
+   - **Region:** Your preferred region (e.g., `us-central1`)
+   - **CPU/Memory:** 1 vCPU, 512 MiB (adjust as needed)
+   - **Port:** `5000` (matches your Flask app)
+   - **Environment variables:** Add your `.env` variables (`GROQ_API_KEY`, `HUGGINGFACEHUB_API_TOKEN`, etc.)
+   - **Authentication:** Select **Allow unauthenticated invocations** (for public access)
+5. Click **Create** and wait for deployment
+
+> ℹ️ **Cloud Run** is the GCP equivalent of AWS App Runner. It runs your container serverlessly — you only pay when requests are being processed. It auto-scales to zero when idle.
+
+#### 🤖 Deploy via CLI (Automated — From Jenkinsfile)
+
+Add this to your Jenkinsfile's deploy stage for GCP:
+
+```groovy
+stage('Deploy to Cloud Run') {
+    steps {
+        withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
+            sh """
+                gcloud auth activate-service-account --key-file=\$GCP_KEY
+                gcloud config set project YOUR_PROJECT_ID
+                gcloud run deploy medical-rag-chatbot \
+                    --image us-central1-docker.pkg.dev/YOUR_PROJECT_ID/medical-rag/medical-rag:latest \
+                    --region us-central1 \
+                    --port 5000 \
+                    --allow-unauthenticated \
+                    --set-env-vars "GROQ_API_KEY=your-key,HUGGINGFACEHUB_API_TOKEN=your-token"
+            """
+        }
+    }
+}
+```
+
+> ⚠️ **Important:** Replace `YOUR_PROJECT_ID` with your actual GCP project ID. For secrets, consider using **GCP Secret Manager** instead of plain env vars in production.
+
+---
+
 ### 🧪 Run Jenkins Pipeline
 
 - Go to **Jenkins Dashboard** → Select your pipeline job
 - Click **Build Now**
 
-If all stages succeed (Checkout → Build → Trivy Scan → Push to ECR → Deploy to App Runner):
+If all stages succeed (Checkout → Build → Trivy Scan → Push to Registry → Deploy):
 
-🎉 **CI/CD Deployment to AWS App Runner is complete!**
+🎉 **CI/CD Deployment is complete!**
 
-✅ Your app is now live and running on AWS 🚀
+✅ Your app is now live and running on **AWS App Runner** or **GCP Cloud Run** 🚀
+
+---
+
+## 📋 Quick Reference: AWS vs GCP Services
+
+| Purpose | AWS Service | GCP Service |
+|---|---|---|
+| Container Registry | ECR (Elastic Container Registry) | Artifact Registry |
+| Serverless Container Hosting | App Runner | Cloud Run |
+| Identity & Access | IAM Users + Access Keys | Service Accounts + JSON Keys |
+| CLI Tool | `aws` CLI | `gcloud` CLI |
+| Credentials in Jenkins | AWS Credentials plugin | Secret file (JSON key) |
+| Auth Command | `aws ecr get-login-password` | `gcloud auth configure-docker` |

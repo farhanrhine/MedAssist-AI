@@ -2,63 +2,98 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1'
-        ECR_REPO = 'my-repo'
+        // ── GCP Config ──
+        GCP_PROJECT_ID = 'YOUR_GCP_PROJECT_ID'           // TODO: Replace with your GCP project ID
+        GCP_REGION = 'us-central1'
+        GAR_REPO = 'medical-rag'                          // Artifact Registry repository name
+        CLOUD_RUN_SERVICE = 'medical-rag-chatbot'
+        IMAGE_NAME = 'medical-rag-ai-agent'
         IMAGE_TAG = 'latest'
-        SERVICE_NAME = 'llmops-medical-service'
     }
 
     stages {
+
         stage('Clone GitHub Repo') {
             steps {
                 script {
                     echo 'Cloning GitHub repo to Jenkins...'
-                    checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/data-guru0/RAG-MEDICAL-CHATBOT.git']])
+                    checkout scmGit(
+                        branches: [[name: '*/main']],
+                        extensions: [],
+                        userRemoteConfigs: [[
+                            credentialsId: 'github-token',
+                            url: 'https://github.com/farhanrhine/medical-rag-ai-agent-gcp.git'
+                        ]]
+                    )
                 }
             }
         }
 
-        stage('Build, Scan, and Push Docker Image to ECR') {
+        stage('Build and Scan Docker Image') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+                script {
+                    echo 'Building Docker image...'
+                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+
+                    echo 'Scanning with Trivy...'
+                    sh "trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${IMAGE_NAME}:${IMAGE_TAG} || true"
+
+                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Push to GCP Artifact Registry') {
+            steps {
+                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
                     script {
-                        def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-                        def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
+                        def garUrl = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPO}"
+                        def imageFullTag = "${garUrl}/${IMAGE_NAME}:${IMAGE_TAG}"
 
                         sh """
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
-                        docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
-                        trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${env.ECR_REPO}:${IMAGE_TAG} || true
-                        docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
+                        gcloud auth activate-service-account --key-file=\$GCP_KEY
+                        gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${imageFullTag}
                         docker push ${imageFullTag}
                         """
-
-                        archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
                     }
                 }
             }
         }
 
-         stage('Deploy to AWS App Runner') {
+        stage('Deploy to GCP Cloud Run') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
                     script {
-                        def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-                        def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
+                        def garUrl = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPO}"
+                        def imageFullTag = "${garUrl}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-                        echo "Triggering deployment to AWS App Runner..."
+                        echo 'Deploying to GCP Cloud Run...'
 
                         sh """
-                        SERVICE_ARN=\$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='${SERVICE_NAME}'].ServiceArn" --output text --region ${AWS_REGION})
-                        echo "Found App Runner Service ARN: \$SERVICE_ARN"
+                        gcloud auth activate-service-account --key-file=\$GCP_KEY
+                        gcloud config set project ${GCP_PROJECT_ID}
 
-                        aws apprunner start-deployment --service-arn \$SERVICE_ARN --region ${AWS_REGION}
+                        gcloud run deploy ${CLOUD_RUN_SERVICE} \
+                            --image ${imageFullTag} \
+                            --region ${GCP_REGION} \
+                            --port 5000 \
+                            --allow-unauthenticated \
+                            --platform managed \
+                            --quiet
                         """
                     }
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo '🎉 Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed. Check the logs above.'
         }
     }
 }
