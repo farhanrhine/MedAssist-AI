@@ -28,7 +28,7 @@
             {% for msg in messages %}
                 <div class="message {{ msg.role }}">
                     <strong>{{ msg.role|capitalize }}:</strong><br />
-                    {{ msg.content | safe | nl2br }}
+                    {{ msg.content | nl2br }}
                 </div>
             {% endfor %}
         </div>

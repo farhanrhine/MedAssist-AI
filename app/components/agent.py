@@ -1,111 +1,97 @@
-from typing import Any, Dict, List
-
+from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain_groq import ChatGroq
+from langgraph.checkpoint.memory import InMemorySaver
+import re
 
 from app.components.vector_store import load_vector_store
 from app.common.logger import get_logger
 from app.common.custom_exception import CustomException
 from app.config.config import GROQ_QWEN_MODEL
 
-
 logger = get_logger(__name__)
 
-
+# New System Prompt based on the modern pattern
 SYSTEM_PROMPT = """You are a helpful and concise medical question-answering assistant.
-
-You have access to one tool:
-
-- medical_retriever: use this to look up relevant medical context from the user's documents.
+Your goal is to provide accurate information based on the medical context you retrieve using your tools.
 
 Guidelines:
-- Always call the medical_retriever tool before answering a medical question.
-- Use only the information returned by the tool as your source of truth.
-- If the tool does not return enough information, say you do not know instead of guessing.
-- Answer the user's medical question in at most 2–3 sentences.
-- Use clear, simple language appropriate for patients, not doctors.
+- Use only the provided context from the 'get_medical_context' tool to answer. 
+- If the tool doesn't return relevant information, clearly state that you don't know based on the available information.
+- Provide answers that are at most 2-3 sentences.
+- Use clear, simple, and professional language.
+- Always remind the user to consult a professional for medical advice if the query is serious.
 """
 
+# Initialize core components
+try:
+    _db = load_vector_store()
+except Exception as e:
+    logger.error(f"Failed to load vector store: {str(e)}")
+    _db = None
+
+_checkpointer = InMemorySaver()
 
 @tool
-def medical_retriever(question: str) -> str:
-    """Retrieve relevant medical context from the vector store for a given question."""
-    db = load_vector_store()
-    if db is None:
-        logger.warning("medical_retriever called but no vector store is available")
-        return "No medical documents are available to answer this question."
-
-    retriever = db.as_retriever(search_kwargs={"k": 3})
-    docs = retriever.invoke(question)
-
-    if not docs:
-        return "No relevant context was found for this question."
-
-    return "\n\n".join(doc.page_content for doc in docs)
-
-
-def _build_agent():
+def get_medical_context(question: str) -> str:
+    """Retrieve relevant medical information from the knowledge base for a specific question. 
+    Use this tool whenever a medical question is asked to find factual ground truth.
+    """
     try:
-        model = ChatGroq(
-            model=GROQ_QWEN_MODEL,
-            temperature=0,
-        )
+        if _db:
+            retriever = _db.as_retriever(search_kwargs={"k": 3})
+            docs = retriever.invoke(question)
+            if not docs:
+                return "No relevant medical context found in the database."
+            return "\n\n".join(doc.page_content for doc in docs)
+        return "The medical knowledge base is currently unavailable."
     except Exception as e:
-        error = CustomException("Failed to initialize Groq Qwen model for agent", e)
-        logger.error(str(error))
-        raise
+        logger.error(f"Error in context retrieval tool: {str(e)}")
+        return f"Error retrieving medical context: {str(e)}"
 
-    return create_agent(
-        model=model,
-        tools=[medical_retriever],
-        system_prompt=SYSTEM_PROMPT,
-    )
+# Initialize the model using the new init_chat_model API
+_model = init_chat_model(
+    model=GROQ_QWEN_MODEL,
+    model_provider="groq",
+    temperature=0
+)
 
-
-_agent = _build_agent()
-
+# Create the agent using the modern create_agent factory
+_agent = create_agent(
+    model=_model,
+    tools=[get_medical_context],
+    system_prompt=SYSTEM_PROMPT,
+    checkpointer=_checkpointer
+)
 
 def get_agent_response(user_message: str) -> str:
-    """Invoke the LangChain agent and return the final assistant message as plain text."""
+    """Invoke the agent and return the assistant response."""
     try:
-        result: Dict[str, Any] = _agent.invoke(
-            {"messages": [{"role": "user", "content": user_message}]}
+        # Use a consistent thread_id for conversation memory
+        # In a multi-user app, this would ideally come from the session ID
+        config = {"configurable": {"thread_id": "medical_rag_session"}}
+        
+        # Invoke the agent with the user message
+        result = _agent.invoke(
+            {"messages": [{"role": "user", "content": user_message}]},
+            config=config
         )
-    except Exception as e:
-        error = CustomException("Agent invocation failed", e)
-        logger.error(str(error))
-        raise
-
-    messages: List[Dict[str, Any]] = result.get("messages", [])
-    if not messages:
-        logger.warning("Agent returned no messages")
-        return "Sorry, I could not generate a response."
-
-    last_message = messages[-1]
-    
-    # Check if last_message is a dictionary or an object (like AIMessage)
-    if isinstance(last_message, dict):
-        content = last_message.get("content", "")
-    else:
-        # Assume it's a LangChain message object (BaseMessage)
-        content = getattr(last_message, "content", "")
-
-    # Content may be a simple string or a list of content blocks.
-    if isinstance(content, str):
+        
+        # Extract content from the last message in the response
+        content = ""
+        if isinstance(result, dict) and "messages" in result:
+            content = result["messages"][-1].content
+        elif hasattr(result, "content"):
+            content = result.content
+        else:
+            content = str(result)
+            
+        # Manually strip <thought>...</thought> tags if they appear in the model output
+        content = re.sub(r'<thought>.*?</thought>', '', content, flags=re.DOTALL).strip()
+        
         return content
-
-    if isinstance(content, list):
-        # Join any text parts; ignore non-text blocks for now.
-        text_parts = [
-            part.get("text", "")
-            for part in content
-            if isinstance(part, dict) and part.get("type") == "text"
-        ]
-        joined = "\n".join(p for p in text_parts if p)
-        if joined:
-            return joined
-
-    logger.warning("Agent response content was in an unexpected format")
-    return "Sorry, I could not understand the response from the model."
-
+        
+    except Exception as e:
+        error = CustomException("Agent processing failed", e)
+        logger.error(str(error))
+        return f"I'm sorry, I'm having trouble processing that request. (Error: {str(e)})"
