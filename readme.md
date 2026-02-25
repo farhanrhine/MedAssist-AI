@@ -2,7 +2,44 @@
 
 An AI-powered medical question-answering chatbot built with **LangChain Agents**, **RAG (Retrieval-Augmented Generation)**, and **Flask**. The agent retrieves verified medical information from *The GALE Encyclopedia of Medicine, 2nd Edition* and provides cited, trustworthy answers.
 
-![Medical RAG Workflow](Medical+RAG+Workflow.png)
+## 🔄 Workflow
+
+```mermaid
+flowchart TD
+    A["🧑 User asks a medical question"] --> B["🌐 Flask App"]
+    B --> C["🤖 LangChain Agent\n(create_agent + Qwen3-32B)"]
+    C --> D["🔧 Tool: get_medical_context()"]
+    D --> E["📄 PDF Loader\n(The GALE Encyclopedia)"]
+    E --> F["✂️ Text Splitter\n(500 chars, 50 overlap)"]
+    F --> G["🧠 HuggingFace Embeddings\n(all-MiniLM-L6-v2)"]
+    G --> H["📦 FAISS Vector Store"]
+    H -->|"Top-3 chunks + Page numbers"| C
+    C --> I["💬 LLM generates answer\nwith 📖 citations"]
+    I --> J["🖥️ Chat UI\n(Citation card + RAG badge)"]
+    J --> A
+
+    style A fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    style C fill:#eef2ff,stroke:#6366f1,color:#312e81
+    style H fill:#f0fdf4,stroke:#22c55e,color:#166534
+    style I fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    style J fill:#f1f5f9,stroke:#64748b,color:#1e293b
+```
+
+```mermaid
+flowchart LR
+    A["📂 GitHub Push"] --> B["🔨 Jenkins Pipeline"]
+    B --> C["🐳 Docker Build"]
+    C --> D["🔍 Trivy Security Scan"]
+    D --> E["📦 GCP Artifact Registry"]
+    E --> F["☁️ GCP Cloud Run"]
+    F --> G["🌍 Live App"]
+
+    style A fill:#f0fdf4,stroke:#22c55e,color:#166534
+    style B fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    style D fill:#fef2f2,stroke:#ef4444,color:#991b1b
+    style F fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    style G fill:#fef3c7,stroke:#f59e0b,color:#78350f
+```
 
 ## ✨ Features
 
@@ -157,37 +194,7 @@ gcloud run deploy medical-rag-chatbot \
 
 ## 🏗️ Architecture
 
-```
-User Question
-     │
-     ▼
-Flask App (application.py)
-     │
-     ▼
-LangChain Agent (create_agent)
-     │
-     ├──▶ Tool: get_medical_context()
-     │         │
-     │         ▼
-     │    FAISS Vector Store
-     │    (The GALE Encyclopedia)
-     │         │
-     │         ▼
-     │    Top-3 relevant chunks
-     │    with [Page X] markers
-     │
-     ▼
-Qwen3-32B (via Groq)
-     │
-     ▼
-Answer + 📖 Citations
-     │
-     ▼
-Chat UI (index.html)
-  ├── Styled answer bubble
-  ├── Green citation card
-  └── ✅ RAG-Verified badge
-```
+See the [Workflow diagrams](#-workflow) at the top of this README for the full application and CI/CD flow.
 
 ## 📄 License
 
