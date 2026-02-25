@@ -196,10 +196,7 @@ gcloud run deploy medical-rag-chatbot \
 
 See the [Workflow diagrams](#-workflow) at the top of this README for the full application and CI/CD flow.
 
-## 📄 License
-
-This project is for educational purposes.
 
 ## 👤 Author
 
-**Farhan Rhine** — [GitHub](https://github.com/farhanrhine)
+**Farhan** — [GitHub](https://github.com/farhanrhine)
