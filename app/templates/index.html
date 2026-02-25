@@ -269,6 +269,53 @@
             color: rgba(255, 255, 255, 0.7);
         }
 
+        /* ── Citation Block ── */
+        .citation-block {
+            margin-top: 12px;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+            border: 1px solid #bbf7d0;
+            border-left: 3px solid #22c55e;
+            border-radius: 0 10px 10px 0;
+            font-size: 12px;
+            line-height: 1.7;
+            color: #166534;
+        }
+
+        .citation-block .citation-header {
+            font-weight: 700;
+            font-size: 12px;
+            color: #15803d;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .citation-block .citation-item {
+            padding: 2px 0;
+            color: #166534;
+            font-size: 12px;
+        }
+
+        .citation-block .citation-item::before {
+            content: '📄 ';
+        }
+
+        .verified-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 8px;
+            padding: 3px 10px;
+            background: #dbeafe;
+            border: 1px solid #bfdbfe;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #1d4ed8;
+        }
+
         /* ── Error Banner ── */
         .error-banner {
             padding: 12px 18px;
@@ -470,11 +517,86 @@
     </div>
 
     <script>
+        // Format citations in assistant messages
+        function formatCitations() {
+            document.querySelectorAll('.msg-row.assistant .bubble').forEach(bubble => {
+                const html = bubble.innerHTML;
+
+                // Split content into lines by <br> tags
+                const parts = html.split(/<br\s*\/?>\n?/i);
+                let beforeCitation = [];
+                let citationLines = [];
+                let afterCitation = [];
+                let foundCitationHeader = false;
+                let citationEnded = false;
+
+                parts.forEach(part => {
+                    const trimmed = part.trim();
+
+                    if (!foundCitationHeader && !citationEnded) {
+                        // Look for the "📖 Sources" header line
+                        if (trimmed.match(/📖\s*Sources?/i)) {
+                            foundCitationHeader = true;
+                            // If there's extra text on same line after "Sources:", ignore it or check if it's a citation
+                            const afterHeader = trimmed.replace(/📖\s*Sources?:?\s*/i, '').trim();
+                            if (afterHeader && afterHeader.startsWith('-')) {
+                                citationLines.push(afterHeader.replace(/^[-•]\s*/, '').trim());
+                            }
+                        } else {
+                            beforeCitation.push(part);
+                        }
+                    } else if (foundCitationHeader && !citationEnded) {
+                        // Collect citation lines (start with "- " or "• ")
+                        if (trimmed.startsWith('-') || trimmed.startsWith('•')) {
+                            citationLines.push(trimmed.replace(/^[-•]\s*/, '').trim());
+                        } else if (trimmed === '') {
+                            // skip empty lines within citation block
+                        } else {
+                            // Non-citation line after citations → citation block is done
+                            citationEnded = true;
+                            afterCitation.push(part);
+                        }
+                    } else {
+                        afterCitation.push(part);
+                    }
+                });
+
+                // Only rebuild if we found citations
+                if (citationLines.length > 0) {
+                    let newHTML = beforeCitation.join('<br>\n');
+
+                    // Build the styled citation card
+                    newHTML += '<div class="citation-block">';
+                    newHTML += '<div class="citation-header">📖 Verified Sources</div>';
+                    citationLines.forEach(line => {
+                        if (line) {
+                            newHTML += '<div class="citation-item">' + line + '</div>';
+                        }
+                    });
+                    newHTML += '</div>';
+                    newHTML += '<span class="verified-badge">✅ RAG-Verified Answer</span>';
+
+                    // Append any text that came after citations
+                    if (afterCitation.length > 0) {
+                        const afterText = afterCitation.join('<br>\n').trim();
+                        if (afterText) {
+                            newHTML += '<br>\n' + afterText;
+                        }
+                    }
+
+                    bubble.innerHTML = newHTML;
+                }
+            });
+        }
+
         // Auto-scroll to bottom on load
         const chatBox = document.getElementById('chat-box');
         if (chatBox) {
             chatBox.scrollTop = chatBox.scrollHeight;
         }
+
+        // Format citations on page load
+        formatCitations();
 
         // Submit on Enter (Shift+Enter for new line)
         function handleKeyDown(e) {
