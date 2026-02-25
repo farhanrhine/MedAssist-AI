@@ -1,5 +1,5 @@
-## Parent image
-FROM python:3.10-slim
+## Parent image — Python 3.12 slim (matches pyproject.toml requires-python)
+FROM python:3.12-slim
 
 ## Essential environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,16 +14,23 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-## Copying all contents from local to container
-COPY . .
+## Install uv — fast Python package manager
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-## Install Python dependencies
-RUN pip install --no-cache-dir -e .
+## Copy dependency files first (better layer caching)
+COPY pyproject.toml uv.lock .python-version ./
 
-## Expose only flask port
+## Install dependencies using uv (without dev deps, frozen lockfile)
+RUN uv sync --frozen --no-dev --no-install-project
+
+## Copy the rest of the project
+COPY app/ app/
+COPY data/ data/
+COPY vectorstore/ vectorstore/
+COPY main.py .
+
+## Expose Flask port
 EXPOSE 5000
 
-## Run the Flask app
-CMD ["python", "app/application.py"]
-
-
+## Run the Flask app using uv
+CMD ["uv", "run", "python", "-m", "app.application"]
