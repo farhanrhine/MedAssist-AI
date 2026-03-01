@@ -5,8 +5,8 @@ pipeline {
         // ── GCP Config ──
         GCP_PROJECT_ID = 'YOUR_GCP_PROJECT_ID'           // TODO: Replace with your GCP project ID
         GCP_REGION = 'us-central1'
-        GAR_REPO = 'medical-rag'                          // Artifact Registry repository name
-        CLOUD_RUN_SERVICE = 'medical-rag-chatbot'
+        GAR_REPO = 'medical-rag-ai-agent'                          // Artifact Registry repository name
+        CLOUD_RUN_SERVICE = 'medical-rag-ai-agent'
         IMAGE_NAME = 'medical-rag-ai-agent'
         IMAGE_TAG = 'latest'
     }
@@ -22,8 +22,8 @@ pipeline {
                         extensions: [],
                         userRemoteConfigs: [[
                             credentialsId: 'github-token',
-                            url: 'https://github.com/farhanrhine/medical-rag-ai-agent-gcp.git'
-                        ]]
+                            url: 'https://github.com/farhanrhine/medical-rag-ai-agent-gcp.git' 
+                        ]] // TODO: Replace with  jenkins generate pipeline script stage 1
                     )
                 }
             }
