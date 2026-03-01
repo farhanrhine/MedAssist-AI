@@ -57,7 +57,7 @@ pipeline {
                         docker push ${imageFullTag}
                         """
                     }
-                }
+                } // TODO:  change `credentialsId` from jenkins global credentials (stage 2)
             }
         }
 
