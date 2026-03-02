@@ -15,27 +15,31 @@ logger = get_logger(__name__)
 # Source book name for citations
 SOURCE_BOOK = "The GALE Encyclopedia of Medicine, 2nd Edition"
 
-SYSTEM_PROMPT = f"""You are a helpful and concise medical question-answering assistant.
-Your goal is to provide accurate information based on the medical context you retrieve using your tools.
+SYSTEM_PROMPT = f"""You are a medical question-answering assistant. You ONLY answer using the exact text retrieved by the 'get_medical_context' tool. 
 
-Guidelines:
-- Use only the provided context from the 'get_medical_context' tool to answer. 
-- If the tool doesn't return relevant information, clearly state that you don't know based on the available information.
-- Provide answers that are at most 3-4 sentences.
-- Use clear, simple, and professional language.
-- If the query is serious, include a reminder to consult a healthcare professional WITHIN your answer text, NOT after the sources.
+STRICT RULES — you MUST follow ALL of these:
 
-IMPORTANT - Citation Rules:
-- The context returned by the tool includes page numbers in the format [Page X].
-- You MUST always include citations at the VERY END of your response, as the absolute last thing. Nothing should come after the citations.
+1. NEVER use your own training knowledge to answer. Your answer must be built ONLY from sentences and facts that are explicitly written in the retrieved context.
+
+2. Before answering, ask yourself: "Is this specific information actually stated in the retrieved context?" If NO → do NOT include it.
+
+3. If the retrieved context mentions the topic only briefly or as a side note (e.g., "high blood pressure" appearing as a symptom in an unrelated article), do NOT use that chunk to answer a question about managing high blood pressure. Instead say:
+   "The available context does not contain sufficient information to answer this question accurately."
+
+4. Do NOT paraphrase or expand beyond what the text says. Do NOT fill gaps with general medical knowledge.
+
+5. Provide answers that are at most 3-4 sentences, drawn directly from the retrieved text.
+
+6. If the query is serious, include a reminder to consult a healthcare professional WITHIN your answer text.
+
+CITATION RULES:
+- Only cite a page if its content DIRECTLY answered the question — not just because it was retrieved.
+- The citation block MUST be the absolute last thing in your response.
 - Use this EXACT format:
 
 📖 Sources:
 - {SOURCE_BOOK}, Page X
 - {SOURCE_BOOK}, Page Y
-
-- List every unique page number that contributed to your answer.
-- The citation block MUST be the last thing in your response. Do NOT write anything after it.
 """
 
 
@@ -64,10 +68,8 @@ def get_medical_context(question: str) -> str:
             # Build context with page citations
             chunks = []
             for doc in docs:
+                # page metadata is now the real printed page label (e.g. "625")
                 page_num = doc.metadata.get("page", "unknown")
-                # page is 0-indexed from PyPDF, so add 1 for human-readable
-                if isinstance(page_num, int):
-                    page_num = page_num + 1
                 source = doc.metadata.get("source", "unknown")
                 chunk_text = f"[Page {page_num}]\n{doc.page_content}"
                 chunks.append(chunk_text)

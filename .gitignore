@@ -4,3 +4,16 @@ RAG_Medcal_Chatbot.egg-info/
 .env
 __pycache__
 docs/
+
+
+# Add to .gitignore
+echo "vectorstore/" >> .gitignore
+
+# Remove from git tracking (keeps local files, removes from repo)
+git rm -r --cached vectorstore/
+
+# Commit
+git commit -m "Remove vectorstore from tracking, add to .gitignore"
+
+# Push
+git push origin main
