@@ -61,31 +61,32 @@ pipeline {
             }
         }
 
-        // stage('Deploy to GCP Cloud Run') {
-        //     steps {
-        //         withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
-        //             script {
-        //                 def garUrl = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPO}"
-        //                 def imageFullTag = "${garUrl}/${IMAGE_NAME}:${IMAGE_TAG}"
+        stage('Deploy to GCP Cloud Run') {
+            steps {
+                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
+                    script {
+                        def garUrl = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPO}"
+                        def imageFullTag = "${garUrl}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-        //                 echo 'Deploying to GCP Cloud Run...'
+                        echo 'Deploying to GCP Cloud Run...'
 
-        //                 sh """
-        //                 gcloud auth activate-service-account --key-file=\$GCP_KEY
-        //                 gcloud config set project ${GCP_PROJECT_ID}
+                        sh """
+                        gcloud auth activate-service-account --key-file=\$GCP_KEY
+                        gcloud config set project ${GCP_PROJECT_ID}
 
-        //                 gcloud run deploy ${CLOUD_RUN_SERVICE} \
-        //                     --image ${imageFullTag} \
-        //                     --region ${GCP_REGION} \
-        //                     --port 5000 \
-        //                     --allow-unauthenticated \
-        //                     --platform managed \
-        //                     --quiet
-        //                 """
-        //             } // TODO: change `credentialsId` from jenkins global credentials (stage 3)
-        //         }
-        //     }
-        // }
+                        gcloud run deploy ${CLOUD_RUN_SERVICE} \
+                            --image ${imageFullTag} \
+                            --region ${GCP_REGION} \
+                            --port 5000 \
+                            --allow-unauthenticated \
+                            --platform managed \
+                            --quiet \
+                            --set-env-vars GROQ_API_KEY=${GROQ_API_KEY},HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
+                        """
+                    } // TODO: change `credentialsId` from jenkins global credentials (stage 3)
+                }
+            }
+        }
     }
 
     post {
