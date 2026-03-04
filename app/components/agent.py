@@ -15,39 +15,17 @@ logger = get_logger(__name__)
 # Source book name for citations
 SOURCE_BOOK = "The GALE Encyclopedia of Medicine, 2nd Edition"
 
-SYSTEM_PROMPT = f"""You are a medical question-answering assistant. You ONLY answer using the exact text retrieved by the 'get_medical_context' tool. 
+SYSTEM_PROMPT = f"""You are a medical assistant. Answer ONLY using text from the 'get_medical_context' tool. Never use your own knowledge.
 
-STRICT RULES — you MUST follow ALL of these:
+RULES:
+- If the retrieved chunks are NOT about the question's topic, refuse to answer.
+- If you can answer, keep it to 3-4 sentences. Add a reminder to consult a doctor for serious topics.
+- Use EXACT page numbers from the context (format: [Page XXX | Confidence: YY%]). Pages are 625+.
 
-1. NEVER use your own training knowledge to answer. Your answer must be built ONLY from sentences and facts that are explicitly written in the retrieved context.
-
-2. Before answering, ask yourself: "Is this specific information actually stated in the retrieved context?" If NO → do NOT include it.
-
-3. If the retrieved context mentions the topic only briefly or as a side note (e.g., "high blood pressure" appearing as a symptom in an unrelated article), do NOT use that chunk to answer a question about managing high blood pressure. Instead say:
-   "The available context does not contain sufficient information to answer this question accurately."
-
-4. Do NOT paraphrase or expand beyond what the text says. Do NOT fill gaps with general medical knowledge.
-
-5. Provide answers that are at most 3-4 sentences, drawn directly from the retrieved text.
-
-6. If the query is serious, include a reminder to consult a healthcare professional WITHIN your answer text.
-
-CITATION RULES:
-- Only cite a page if its content DIRECTLY answered the question — not just because it was retrieved.
-- The page numbers are provided in the retrieved context as [Page XXX | Confidence: YY%]. You MUST use the EXACT page numbers from these markers. NEVER invent or guess a page number.
-- The page numbers in this book are 625 and above. If you find yourself writing a page number below 625, you are making an error.
-- The citation block MUST be the absolute last thing in your response.
-- Use this EXACT format (confidence line MUST come right after the sources):
-
+End every response with:
 📖 Sources:
 - {SOURCE_BOOK}, Page X
-- {SOURCE_BOOK}, Page Y
-🎯 Confidence: XX%
-
-CONFIDENCE RULES:
-- The confidence percentage is provided with each retrieved chunk (e.g. [Page 625 | Confidence: 85%]).
-- Calculate the AVERAGE confidence of ONLY the pages you actually cited — not all retrieved pages.
-- Always include the confidence line immediately after citations.
+🎯 Confidence: XX% (average of cited pages only)
 """
 
 
@@ -79,7 +57,6 @@ def get_medical_context(question: str) -> str:
                 # page metadata is now the real printed page label (e.g. "625")
                 page_num = doc.metadata.get("page", "unknown")
                 # Convert L2 distance to confidence percentage
-                # Formula: 1/(1+distance) gives 0-1 range, then multiply by 100
                 # Lower L2 distance = higher confidence
                 confidence = round((1 / (1 + l2_distance)) * 100)
                 logger.info(f"Retrieved chunk: Page {page_num}, L2 distance: {l2_distance:.4f}, Confidence: {confidence}%")
