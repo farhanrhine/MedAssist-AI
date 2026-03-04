@@ -7,3 +7,4 @@ __pycache__/
 docs/
 custom_jenkins/build_utf8.log
 custom_jenkins/build.log
+gcp-key.json

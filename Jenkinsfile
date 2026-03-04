@@ -1,15 +1,15 @@
 pipeline {
     agent any
 
-    // environment {
-    //     // ── GCP Config ──
-    //     // GCP_PROJECT_ID = 'YOUR_GCP_PROJECT_ID'           // TODO: Replace with your GCP project ID
-    //     // GCP_REGION = 'us-central1'
-    //     // GAR_REPO = 'medassist-ai'                          // Artifact Registry repository name
-    //     // CLOUD_RUN_SERVICE = 'medassist-ai'
-    //     // IMAGE_NAME = 'medassist-ai'
-    //     // IMAGE_TAG = 'latest'
-    // }
+    environment {
+        // ── GCP Config ──
+        GCP_PROJECT_ID = 'multi-ai-agent-489113'           // TODO: Replace with your GCP project ID
+        GCP_REGION = 'us-central1'
+        GAR_REPO = 'medassist-ai-repo'                          // Artifact Registry repository name
+        CLOUD_RUN_SERVICE = 'medassist-ai-service'
+        IMAGE_NAME = 'medassist-ai'
+        IMAGE_TAG = 'latest'
+    }
 
     stages {
 
@@ -29,37 +29,37 @@ pipeline {
             }
         }
 
-        // stage('Build and Scan Docker Image') {
-        //     steps {
-        //         script {
-        //             echo 'Building Docker image...'
-        //             sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+        stage('Build and Scan Docker Image') {
+            steps {
+                script {
+                    echo 'Building Docker image...'
+                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
 
-        //             echo 'Scanning with Trivy...'
-        //             sh "trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${IMAGE_NAME}:${IMAGE_TAG} || true"
+                    echo 'Scanning with Trivy...'
+                    sh "trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${IMAGE_NAME}:${IMAGE_TAG} || true"
 
-        //             archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
-        //         }
-        //     }
-        // }
+                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+                }
+            }
+        }
 
-        // stage('Push to GCP Artifact Registry') {
-        //     steps {
-        //         withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
-        //             script {
-        //                 def garUrl = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPO}"
-        //                 def imageFullTag = "${garUrl}/${IMAGE_NAME}:${IMAGE_TAG}"
+        stage('Push to GCP Artifact Registry') {
+            steps {
+                withCredentials([file(credentialsId: 'gcp-service-account', variable: 'GCP_KEY')]) {
+                    script {
+                        def garUrl = "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPO}"
+                        def imageFullTag = "${garUrl}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-        //                 sh """
-        //                 gcloud auth activate-service-account --key-file=\$GCP_KEY
-        //                 gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
-        //                 docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${imageFullTag}
-        //                 docker push ${imageFullTag}
-        //                 """
-        //             }
-        //         } // TODO:  change `credentialsId` from jenkins global credentials (stage 2)
-        //     }
-        // }
+                        sh """
+                        gcloud auth activate-service-account --key-file=\$GCP_KEY
+                        gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${imageFullTag}
+                        docker push ${imageFullTag}
+                        """
+                    }
+                } // TODO:  change `credentialsId` from jenkins global credentials (stage 2)
+            }
+        }
 
         // stage('Deploy to GCP Cloud Run') {
         //     steps {
